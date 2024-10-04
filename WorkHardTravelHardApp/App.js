@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { theme } from './colors';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Fontisto, Feather } from "@expo/vector-icons";
 
@@ -11,10 +11,39 @@ export default function App() {
   const [working, setWorking] = useState(true);
   const [text, setText] = useState("");
   const [toDos, setToDos] = useState({});
-  useEffect(() => { loadTodos() }, [])
-  const travel = () => setWorking(false);
-  const work = () => setWorking(true);
+  const editInputRefs = useRef({});
+
+  useEffect(() => {
+    loadTodos();
+    loadCategory();
+  }, [])
+
+  useEffect(() => {
+    saveCategory();
+  }, [working]);
+
+  useEffect(() => {
+    saveToDos(toDos);
+  }, [toDos]);
+
+  const travel = () => { setWorking(false); };
+  const work = () => { setWorking(true); };
   const onChangeText = (payload) => setText(payload);
+  const saveCategory = async () => {
+    try {
+      await AsyncStorage.setItem("@Category", JSON.stringify(working))
+    } catch (e) {
+      alert("현재 카테고리 저장하다가 에러남")
+    }
+  }
+  const loadCategory = async () => {
+    try {
+      const c = await AsyncStorage.getItem("@Category")
+      setWorking(JSON.parse(c))
+    } catch (e) {
+      alert("현재 카테고리 불러오다가 에러남")
+    }
+  }
   const saveToDos = async (toSave) => {
     try {
       const s = JSON.stringify(toSave)
@@ -31,13 +60,12 @@ export default function App() {
       alert("할 일 불러오다가 에러남")
     }
   }
-  const addToDo = async () => {
+  const addToDo = () => {
     if (text === "") {
       return
     }
-    const newToDos = { ...toDos, [Date.now()]: { text, working } }
+    const newToDos = { ...toDos, [Date.now()]: { text, working, finish: false, isEditing: false } }
     setToDos(newToDos);
-    await saveToDos(newToDos);
     setText("")
   }
   const deleteTodo = (key) => {
@@ -48,10 +76,33 @@ export default function App() {
           const newToDos = { ...toDos };
           delete newToDos[key];
           setToDos(newToDos);
-          saveToDos(newToDos);
         }
       },
     ])
+  }
+  const finishTodo = (key) => {
+    const newToDos = { ...toDos, [key]: { ...toDos[key], finish: !toDos[key].finish } }
+    setToDos(newToDos);
+  }
+  const toggleEditTodo = (key) => {
+    const newToDos = {
+      ...toDos,
+      [key]: { ...toDos[key], isEditing: !toDos[key].isEditing }
+    };
+    setToDos(newToDos);
+    // 수정 모드로 들어갈 때 포커스 주기
+    if (!toDos[key].isEditing) {
+      setTimeout(() => {
+        editInputRefs.current[key]?.focus(); // 해당 TextInput에 포커스
+      }, 0);
+    }
+  };
+  const editTodo = (key, updatedText) => {
+    const newToDos = {
+      ...toDos,
+      [key]: { ...toDos[key], text: updatedText, isEditing: false }
+    };
+    setToDos(newToDos);
   }
   return (
     <View style={styles.container}>
@@ -74,19 +125,32 @@ export default function App() {
         Object.keys(toDos).map(key =>
           toDos[key].working === working ? (
             <View style={styles.toDo} key={key}>
-              <Text style={styles.toDoText}>{toDos[key].text}</Text>
-              <View style={styles.btnView}>
-                <TouchableOpacity onPress={() => deleteTodo(key)}>
-                  <Fontisto name="trash" size={18} color={theme.trash} />
-                </TouchableOpacity>
-                <TouchableOpacity>
-                  <Feather name="edit-3" size={18} color={theme.trash} />
-                </TouchableOpacity>
-                <TouchableOpacity>
-                  <Fontisto name="checkbox-active" size={18} color="teal" />
-                  {/* checkbox-passive */}
-                </TouchableOpacity>
-              </View>
+              {toDos[key].isEditing ?
+                <TextInput style={styles.editText}
+                  key={key}
+                  defaultValue={toDos[key].text}
+                  onSubmitEditing={(e) => editTodo(key, e.nativeEvent.text)}
+                  ref={(el) => (editInputRefs.current[key] = el)} /> :
+                <Text style={{
+                  ...styles.toDoText,
+                  textDecorationLine: toDos[key].finish ? "line-through" : "none",
+                  opacity: toDos[key].finish ? 0.3 : 1
+                }}>
+                  {toDos[key].text}
+                </Text>
+              }
+              {toDos[key].isEditing ? null :
+                <View style={styles.btnView}>
+                  <TouchableOpacity onPress={() => deleteTodo(key)}>
+                    <Fontisto name="trash" size={18} color={theme.trash} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => toggleEditTodo(key)}>
+                    <Feather name="edit-3" size={18} color={theme.trash} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => finishTodo(key)}>
+                    <Fontisto name={toDos[key].finish ? "checkbox-active" : "checkbox-passive"} size={18} color="teal" />
+                  </TouchableOpacity>
+                </View>}
             </View>
           ) : null
         )}</ScrollView>
@@ -129,6 +193,12 @@ const styles = StyleSheet.create({
     flex: 1
   },
   toDoText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "500",
+    flex: 3
+  },
+  editText: {
     color: "white",
     fontSize: 18,
     fontWeight: "500",
