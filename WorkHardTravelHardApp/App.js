@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { theme } from './colors';
 import { useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -55,7 +55,9 @@ export default function App() {
   const loadTodos = async () => {
     try {
       const s = await AsyncStorage.getItem(STORAGE_KEY)
-      setToDos(JSON.parse(s))
+      if (s) {
+        setToDos(JSON.parse(s))
+      }
     } catch (e) {
       alert("할 일 불러오다가 에러남")
     }
@@ -69,16 +71,25 @@ export default function App() {
     setText("")
   }
   const deleteTodo = (key) => {
-    Alert.alert("할 일 삭제", "정말 삭제하시겠습니까?", [
-      { text: "취소" },
-      {
-        text: "삭제", onPress: () => {
-          const newToDos = { ...toDos };
-          delete newToDos[key];
-          setToDos(newToDos);
-        }
-      },
-    ])
+    if (Platform.OS === "web") {
+      const ok = confirm("정말 삭제하시겠습니까?")
+      if (ok) {
+        const newToDos = { ...toDos };
+        delete newToDos[key];
+        setToDos(newToDos);
+      }
+    } else {
+      Alert.alert("할 일 삭제", "정말 삭제하시겠습니까?", [
+        { text: "취소" },
+        {
+          text: "삭제", onPress: () => {
+            const newToDos = { ...toDos };
+            delete newToDos[key];
+            setToDos(newToDos);
+          }
+        },
+      ])
+    }
   }
   const finishTodo = (key) => {
     const newToDos = { ...toDos, [key]: { ...toDos[key], finish: !toDos[key].finish } }
